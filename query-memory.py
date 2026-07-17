@@ -1,3 +1,5 @@
+#this script ingests PDF, stores it in memory, asks cohere to embed it before running a question
+
 #--- SETUP
 from dotenv import load_dotenv
 import os

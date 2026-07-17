@@ -45,10 +45,8 @@ def hybrid_retrieve(question: str, k: int = 3):
     # Vector search: find top-k relevant chunks
     vector_results = vector_store.similarity_search_with_score(question, k=k)
 
-
     for doc, score in vector_results:
         print("METADATA KEYS:", doc.metadata)
-
 
     chunk_texts = []
     graph_facts = []
@@ -84,8 +82,8 @@ Question: {question}"""
     return response.content, context  # return context too, so you can feed it to RAGAS later
 
 # Quick test
-answer, context_used = answer_question("what is the return policy if my item is bought last year")
-# answer, context_used = answer_question("what is the return policy if my item is bought in a different country")
+# answer, context_used = answer_question("what is the return policy if my item is bought last year")
+answer, context_used = answer_question("what is the return policy if my item is bought in a different country")
 
 print("=====context_used=====" + context_used)
 print(answer)
