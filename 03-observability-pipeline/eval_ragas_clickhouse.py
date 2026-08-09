@@ -6,8 +6,10 @@ captures latency/token usage per run (via instrumented_pipeline.py) and
 persists every row to ClickHouse instead of only printing to console.
 """
 
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from datasets import Dataset
 from ragas import evaluate
@@ -17,6 +19,7 @@ from ragas.embeddings import LangchainEmbeddingsWrapper
 
 from langfuse import get_client
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "02-graph-rag"))
 from query_neo4j import llm, embeddings
 from instrumented_pipeline import run_instrumented_query
 from clickhouse_logger import log_query_runs, estimate_cost_usd

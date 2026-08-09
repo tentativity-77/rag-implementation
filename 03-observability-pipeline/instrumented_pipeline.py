@@ -1,10 +1,13 @@
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from langchain_core.callbacks import get_usage_metadata_callback
 from langfuse import Langfuse, get_client
 from langfuse.langchain import CallbackHandler
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "02-graph-rag"))
 import query_neo4j  # importing this fires its unguarded test call once (query_neo4j.py:125-128)
 
 RETRIEVAL_METHOD = "hybrid_vector_graph"
