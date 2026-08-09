@@ -2,6 +2,8 @@ import time
 from dataclasses import dataclass
 
 from langchain_core.callbacks import get_usage_metadata_callback
+from langfuse import Langfuse, get_client
+from langfuse.langchain import CallbackHandler
 
 import query_neo4j  # importing this fires its unguarded test call once (query_neo4j.py:125-128)
 
@@ -10,6 +12,14 @@ LLM_MODEL_NAME = "claude-sonnet-4-6"
 EMBEDDING_MODEL_NAME = "embed-english-v3.0"
 
 _original_hybrid_retrieve = query_neo4j.hybrid_retrieve
+
+langfuse = get_client()
+_langfuse_handler = CallbackHandler()
+
+# Bind once at import time -- same technique as the hybrid_retrieve monkeypatch below:
+# query_neo4j.answer_question looks up `llm` from the module's globals at call time,
+# so rebinding query_neo4j.llm here is visible inside answer_question without editing it.
+query_neo4j.llm = query_neo4j.llm.with_config(callbacks=[_langfuse_handler])
 
 
 @dataclass
@@ -26,6 +36,7 @@ class QueryRunResult:
     output_tokens: int | None
     llm_model: str
     embedding_model: str
+    trace_id: str
 
 
 def run_instrumented_query(question: str) -> QueryRunResult:
@@ -38,11 +49,16 @@ def run_instrumented_query(question: str) -> QueryRunResult:
         capture["chunks"], capture["graph_facts"] = chunks, facts
         return chunks, facts
 
+    trace_id = Langfuse.create_trace_id(seed=f"{question}-{time.time()}")
+
     query_neo4j.hybrid_retrieve = _timed_hybrid_retrieve
     try:
         t_start = time.perf_counter()
-        with get_usage_metadata_callback() as cb:
-            answer, _ = query_neo4j.answer_question(question)
+        with langfuse.start_as_current_observation(
+            as_type="span", name="query_run", trace_context={"trace_id": trace_id}
+        ):
+            with get_usage_metadata_callback() as cb:
+                answer, _ = query_neo4j.answer_question(question)
         latency_total_ms = (time.perf_counter() - t_start) * 1000
     finally:
         query_neo4j.hybrid_retrieve = _original_hybrid_retrieve
@@ -63,4 +79,5 @@ def run_instrumented_query(question: str) -> QueryRunResult:
         output_tokens=usage.get("output_tokens"),
         llm_model=LLM_MODEL_NAME,
         embedding_model=EMBEDDING_MODEL_NAME,
+        trace_id=trace_id,
     )

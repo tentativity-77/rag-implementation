@@ -15,9 +15,13 @@ from ragas.metrics import Faithfulness, ResponseRelevancy
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 
+from langfuse import get_client
+
 from query_neo4j import llm, embeddings
 from instrumented_pipeline import run_instrumented_query
 from clickhouse_logger import log_query_runs, estimate_cost_usd
+
+langfuse = get_client()
 
 TEST_QUESTIONS = [
     "What is the return policy if my item was bought in a different country?",
@@ -89,3 +93,18 @@ for _, row in df.iterrows():
 
 log_query_runs(clickhouse_rows)
 print(f"\nLogged {len(clickhouse_rows)} rows to ClickHouse (eval_run_id={EVAL_RUN_ID})")
+
+for q, r in run_results.items():
+    row = df[df["user_input"] == q].iloc[0]
+    for metric_name in ("faithfulness", "answer_relevancy", "context_precision"):
+        value = row.get(metric_name)
+        if value is not None:
+            langfuse.create_score(
+                trace_id=r.trace_id,
+                name=metric_name,
+                value=float(value),
+                data_type="NUMERIC",
+            )
+
+langfuse.flush()
+print(f"Logged {len(run_results)} traces to Langfuse")
