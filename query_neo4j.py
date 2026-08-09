@@ -41,12 +41,13 @@ def graph_traverse_from_chunk(chunk_id: str, hops: int = 1):
     print({"chunk_id": chunk_id})
     return graph.query(query, params={"chunk_id": chunk_id})
 
+
+#this function calls graph_traverse_from_chunk
+# it will do vector search first and put the relevant chunks in vector_results
+# and then put it intp graph_facts
 def hybrid_retrieve(question: str, k: int = 3):
     # Vector search: find top-k relevant chunks
     vector_results = vector_store.similarity_search_with_score(question, k=k)
-
-    for doc, score in vector_results:
-        print("METADATA KEYS:", doc.metadata)
 
     chunk_texts = []
     graph_facts = []
@@ -54,15 +55,38 @@ def hybrid_retrieve(question: str, k: int = 3):
     for doc, score in vector_results:
         chunk_texts.append(doc.page_content)
         chunk_id = doc.metadata.get("id")
-        print(f"DEBUG chunk_id: {chunk_id}")  # confirm it's not None
-
         if chunk_id:
             facts = graph_traverse_from_chunk(chunk_id)
-            print(f"DEBUG facts returned: {facts}")  # see raw result before formatting
             for f in facts:
                 graph_facts.append(f"{f['entity']} --{f['relationship']}--> {f['connected_entity']}")
 
-    return chunk_texts, list(set(graph_facts))  # dedupe graph facts
+    return chunk_texts, list(set(graph_facts))
+
+
+# #this function calls hybrid_retrieve, which calls graph_traverse_from_chunk
+# def answer_question(question: str):
+#     chunks, facts = hybrid_retrieve(question)
+
+#     context = "Relevant text excerpts:\n" + "\n---\n".join(chunks)
+#     if facts:
+#         context += "\n\nRelated facts from knowledge graph:\n" + "\n".join(facts)
+
+#     prompt = f"""Answer the question using only the context below.
+
+#     Context:
+#     {context}
+
+#     Question: {question}"""
+
+#     response = llm.invoke(prompt)
+#     return response.content, context  # return context too, so you can feed it to RAGAS later
+
+# # Quick test
+# # answer, context_used = answer_question("what is the return policy if my item is bought last year")
+# answer, context_used = answer_question("what is the return policy if my item is bought in a different country")
+
+# print("=====context_used=====" + context_used)
+# print(answer)
 
 def answer_question(question: str):
     chunks, facts = hybrid_retrieve(question)
@@ -71,7 +95,19 @@ def answer_question(question: str):
     if facts:
         context += "\n\nRelated facts from knowledge graph:\n" + "\n".join(facts)
 
+#     prompt = f"""Answer the question using only the context below.
+
+# Context:
+# {context}
+
+# Question: {question}"""
+
+
     prompt = f"""Answer the question using only the context below.
+
+Give a direct, focused answer in 1-3 sentences that addresses exactly what was asked — nothing more. Do not include unrelated policy details, addresses, or general notes unless the question specifically asks for them.
+
+Do not infer, generalize, or add interpretation beyond what the context explicitly states. If the context doesn't explicitly address part of the question, say so rather than guessing.
 
 Context:
 {context}
@@ -79,11 +115,14 @@ Context:
 Question: {question}"""
 
     response = llm.invoke(prompt)
-    return response.content, context  # return context too, so you can feed it to RAGAS later
 
-# Quick test
-# answer, context_used = answer_question("what is the return policy if my item is bought last year")
-answer, context_used = answer_question("what is the return policy if my item is bought in a different country")
+    # RAGAS wants contexts as a list — combine chunks + facts as separate list items
+    ragas_contexts = chunks + facts
 
-print("=====context_used=====" + context_used)
-print(answer)
+    return response.content, ragas_contexts
+
+
+answer, ragas_contexts = answer_question("what is the return policy if my item is bought in a different country")
+
+print("ANSWER:", answer)
+print("CONTEXTS:", ragas_contexts)
